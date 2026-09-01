@@ -9,6 +9,65 @@ load_dotenv()
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+
+def get_db_connection():
+    if not HAS_POSTGRES or not DATABASE_URL:
+        return None
+    try:
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+def init_db():
+    conn = get_db_connection()
+    if not conn:
+        print("Skipping DB initialization (No active connection or driver).")
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id VARCHAR(255) PRIMARY KEY,
+                    user_email VARCHAR(255),
+                    title VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    session_id VARCHAR(255) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                    role VARCHAR(50) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.commit()
+            print("✅ Supabase PostgreSQL Database initialized successfully!")
+    except Exception as e:
+        print(f"Error initializing DB tables: {e}")
+    finally:
+        conn.close()
+
+# Auto-initialize DB tables
+init_db()
+
 try:
     from google.antigravity import Agent, LocalAgentConfig
     HAS_ANTIGRAVITY = True
@@ -66,6 +125,14 @@ def chat():
 
     except Exception as e:
         return jsonify({'reply': f'Error: {str(e)}', 'status': 'error'}), 500
+
+@app.route('/api/db-status', methods=['GET'])
+def db_status():
+    conn = get_db_connection()
+    if conn:
+        conn.close()
+        return jsonify({'database': 'Supabase PostgreSQL', 'connected': True, 'status': 'online'}), 200
+    return jsonify({'database': 'Supabase PostgreSQL', 'connected': False, 'status': 'offline'}), 500
 
 @app.route('/health', methods=['GET', 'HEAD'])
 def health():
