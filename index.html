@@ -1562,6 +1562,18 @@
 
             <div class="settings-body">
 
+                <!-- API KEY CONFIGURATION -->
+                <div class="s-section">
+                    <div class="s-section-title"><i class="fas fa-key"></i> Gemini API Configuration</div>
+                    <div class="s-row" style="flex-direction:column; align-items:flex-start; gap:6px;">
+                        <div class="s-row-label">
+                            🔑 Gemini API Key
+                            <small>Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-2); text-decoration:underline;">Google AI Studio</a></small>
+                        </div>
+                        <input type="password" id="s-apikey" placeholder="Enter key starting with AIzaSy..." style="width:100%; padding:8px 10px; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:13px; font-family:'Inter',sans-serif; outline:none;" />
+                    </div>
+                </div>
+
                 <!-- LANGUAGE -->
                 <div class="s-section">
                     <div class="s-section-title"><i class="fas fa-globe"></i> Language & Region</div>
@@ -1776,8 +1788,14 @@
         // ══════════════════════════════════════════════════════
         // ① CONFIG & API
         // ══════════════════════════════════════════════════════
-        const API_KEY = 'AQ.Ab8RN6Lg8sUv3bb1jbIvKxJmTin3seRcPWK8iXQm515owBq2_Q';
-        const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${API_KEY}`;
+        function getApiKey() {
+            const s = JSON.parse(localStorage.getItem('cloudbot_settings') || '{}');
+            return (s.apikey && s.apikey.trim()) ? s.apikey.trim() : (localStorage.getItem('cloudbot_api_key') || 'AQ.Ab8RN6Lg8sUv3bb1jbIvKxJmTin3seRcPWK8iXQm515owBq2_Q');
+        }
+        function getGeminiUrl() {
+            const key = getApiKey();
+            return `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+        }
 
         // ══════════════════════════════════════════════════════
         // ② KNOWLEDGE BASE — Predefined Patterns (commercial)
@@ -2319,7 +2337,7 @@ GUIDELINES:
                         parts: [{ text: `Translate this EXACTLY into ${langName}. Do not add or remove any information. Only translate:\n\n${kbMatch.answer}` }]
                     }];
                     try {
-                        const tRes = await fetch(GEMINI_URL, {
+                        const tRes = await fetch(getGeminiUrl(), {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ contents: translateContents })
@@ -2341,7 +2359,7 @@ GUIDELINES:
                 }));
 
                 try {
-                    const res = await fetch(GEMINI_URL, {
+                    const res = await fetch(getGeminiUrl(), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -2353,8 +2371,12 @@ GUIDELINES:
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
                         hideTyping();
-                        addBubbleToDom(`❌ Error: ${err?.error?.message || 'HTTP ' + res.status}`, 'bot');
-                        setStatus('❌ Error', 'error');
+                        let errMsg = err?.error?.message || ('HTTP ' + res.status);
+                        if (res.status === 401 || res.status === 403 || errMsg.includes('authentication credentials') || errMsg.includes('OAuth 2')) {
+                            errMsg = "🔑 Authentication Error: Invalid API Key. Please open Settings (⚙️) and enter your Gemini API Key starting with 'AIzaSy' from Google AI Studio.";
+                        }
+                        addBubbleToDom(`❌ ${errMsg}`, 'bot');
+                        setStatus('❌ Auth Error', 'error');
                         session.messages.pop(); saveSessions();
                         busy = false; sendBtn.disabled = false;
                         return;
@@ -2473,6 +2495,7 @@ GUIDELINES:
         function loadSettingsUI() {
             const s = JSON.parse(localStorage.getItem('cloudbot_settings') || '{}');
             const set = (id, val, def) => { const el = document.getElementById(id); if (!el) return; el[el.type === 'checkbox' ? 'checked' : 'value'] = val ?? def; };
+            set('s-apikey', s.apikey, localStorage.getItem('cloudbot_api_key') || '');
             set('s-language', s.language, 'en');
             set('s-dateformat', s.dateformat, '12h');
             set('s-theme', s.theme, localStorage.getItem('cloudbot_theme') || 'dark');
@@ -2495,6 +2518,7 @@ GUIDELINES:
             const getC = id => document.getElementById(id)?.checked;
 
             const s = {
+                apikey: get('s-apikey'),
                 language: get('s-language'),
                 dateformat: get('s-dateformat'),
                 theme: get('s-theme'),
@@ -2508,6 +2532,7 @@ GUIDELINES:
                 suggestions: getC('s-suggestions'),
                 savehistory: getC('s-savehistory'),
             };
+            if (s.apikey) localStorage.setItem('cloudbot_api_key', s.apikey.trim());
             localStorage.setItem('cloudbot_settings', JSON.stringify(s));
             applySettings(s);
 
