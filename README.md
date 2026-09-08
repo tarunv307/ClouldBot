@@ -1,4 +1,4 @@
-# Antigravity Chatbot
+# Chatbot
 ## Deploy Steps:
 1. Replace `GOOGLE_API_KEY` in `.env` (local) and Render env vars.
 2. Push to GitHub.
